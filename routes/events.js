@@ -1,6 +1,7 @@
 import express from 'express';
 import client from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
+import { auditLog } from '../middleware/logging.js';
 
 const router = express.Router();
 
@@ -56,7 +57,16 @@ router.post("/", authRequired, async (req, res) => {
     if (!result.rows || result.rows.length === 0) {
       return res.status(500).json({ success: false, message: "Event wurde nicht gespeichert" });
     }
-    res.status(201).json({ success: true, event: result.rows[0] });
+    
+    const newEvent = result.rows[0];
+    
+    await auditLog('CREATE', 'event', newEvent.id, createdByAccountId, {
+      title,
+      startingAt,
+      ip: req.ip
+    });
+    
+    res.status(201).json({ success: true, event: newEvent });
   } catch (error) {
     console.error("POST /api/events Error:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -92,6 +102,11 @@ router.delete("/:eventId", authRequired, async (req, res) => {
     }
 
     await client.query("DELETE FROM event WHERE event_id = $1", [eventId]);
+    
+    await auditLog('DELETE', 'event', parseInt(eventId), req.user.id, {
+      title: eventTitle,
+      ip: req.ip
+    });
     
     res.status(200).json({ 
       success: true, 
@@ -140,7 +155,15 @@ router.put("/:eventId", authRequired, async (req, res) => {
        invitationsSendingAt || null, registrationsClosingAt || null, eventId]
     );
     
-    res.status(200).json({ success: true, event: result.rows[0] });
+    const updatedEvent = result.rows[0];
+    
+    await auditLog('UPDATE', 'event', parseInt(eventId), req.user.id, {
+      title,
+      startingAt,
+      ip: req.ip
+    });
+    
+    res.status(200).json({ success: true, event: updatedEvent });
   } catch (error) {
     console.error("PUT /api/events/:id Error:", error);
     res.status(500).json({ success: false, message: error.message });

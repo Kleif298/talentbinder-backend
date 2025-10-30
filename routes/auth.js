@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import client from '../config/db.js';
+import { auditLog } from '../middleware/logging.js';
 
 const router = express.Router();
 
@@ -30,12 +31,23 @@ router.post("/login", async (req, res) => {
         maxAge: 3600000
       });
 
+      await auditLog('LOGIN', 'account', account.id, account.id, { 
+        email,
+        ip: req.ip 
+      });
+
       res.json({
         success: true,
         token: token,
         account: { id: account.id, email: account.email, role: account.role },
       });
     } else {
+      await auditLog('LOGIN_FAILED', 'account', null, null, { 
+        email, 
+        reason: account ? 'Invalid password' : 'User not found',
+        ip: req.ip 
+      });
+
       res.json({
         success: false,
         message: "Login ist fehlgeschlagen. Überprüfe dein Passwort oder Email.",
@@ -77,6 +89,12 @@ router.post("/register", async (req, res) => {
         secure: false,
         sameSite: "Lax",
         maxAge: 3600000
+    });
+
+    await auditLog('REGISTER', 'account', account.id, account.id, { 
+      email,
+      role: account.role,
+      ip: req.ip 
     });
 
     res.json({

@@ -1,6 +1,7 @@
 import express from 'express';
 import client from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
+import { auditLog } from '../middleware/logging.js';
 
 const router = express.Router();
 
@@ -92,6 +93,13 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
 
         await client.query('COMMIT');
 
+        await auditLog('CREATE', 'candidate', newCandidate.id, createdByAccountId, {
+          firstName,
+          lastName,
+          email,
+          ip: req.ip
+        });
+
         res.status(201).json({ 
             success: true, 
             message: "Kandidat erfolgreich erstellt.", 
@@ -152,6 +160,11 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
             return res.status(404).json({ success: false, message: "Kandidat nicht gefunden." });
         }
         
+        await auditLog('UPDATE', 'candidate', parseInt(id), req.user.id, {
+          fields: Object.keys(req.body),
+          ip: req.ip
+        });
+        
         res.status(200).json({ success: true, message: "Kandidat erfolgreich aktualisiert." });
     } catch (err) {
         console.error(`PATCH /api/candidates/${id} Error:`, err);
@@ -174,6 +187,10 @@ router.delete("/:id", authRequired, checkAdmin, async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: "Kandidat nicht gefunden." });
         }
+
+        await auditLog('DELETE', 'candidate', parseInt(id), req.user.id, {
+          ip: req.ip
+        });
 
         res.status(200).json({ success: true, message: "Kandidat erfolgreich gelöscht." });
     } catch (err) {

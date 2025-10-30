@@ -9,11 +9,16 @@ const INTERVAL_OID = 1186;
 pg.types.setTypeParser(INTERVAL_OID, (value) => value);
 
 const client = new Client({
+  connectionString: process.env.DB_URL, 
+  // Fügen Sie SSL-Optionen hinzu, falls es Verbindungsprobleme gibt
+  ssl: { rejectUnauthorized: false },
+  /*
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
+  */
 });
 
 client

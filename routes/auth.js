@@ -25,8 +25,8 @@ router.post("/login", async (req, res) => {
       );
 
       res.cookie("token", token, {
-        httpOnly: false,
-        secure: false,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: "Lax",
         maxAge: 3600000
       });
@@ -85,8 +85,8 @@ router.post("/register", async (req, res) => {
     );
     
     res.cookie("token", token, {
-        httpOnly: false,
-        secure: false,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: "Lax",
         maxAge: 3600000
     });

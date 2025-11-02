@@ -15,14 +15,19 @@ import { requestLogger } from "./middleware/logging.js";
 dotenv.config();
 const app = express();
 
-app.use(cors({ 
-  origin: [
-    "http://localhost:5173",
-    "http://localhost:4173",
-    "https://talentbinder-frontend.onrender.com"
-  ], 
-  credentials: true 
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "https://talentbinder-frontend.onrender.com"
+];
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Die erlaubten HTTP-Methoden
+  credentials: true // Erlaubt Cookies/Authorization Header
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(requestLogger);

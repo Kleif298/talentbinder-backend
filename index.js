@@ -23,9 +23,12 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Die erlaubten HTTP-Methoden
-  credentials: true // Erlaubt Cookies/Authorization Header
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // allow tools like Postman or same-origin
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
 }));
 
 app.use(express.json());

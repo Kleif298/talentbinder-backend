@@ -2,11 +2,20 @@ import express from 'express';
 import client from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
+import { snakeToCamelObj } from '../utils/caseUtils.js';
 
 const router = express.Router();
 
 router.get("/", authRequired, async (req, res) => {
     const { sort_by, status, search } = req.query; 
+
+    // Debugging: log incoming cookies to verify browser sends the token
+    try {
+        console.log("[DEBUG] Incoming Request Headers Cookie:", req.headers.cookie);
+        console.log("[DEBUG] Parsed req.cookies:", req.cookies);
+    } catch (e) {
+        console.error("[DEBUG] Error logging cookies:", e);
+    }
     
     let query = `
         SELECT 
@@ -16,7 +25,7 @@ router.get("/", authRequired, async (req, res) => {
             c.email, 
             c.candidate_status as status,
             c.created_at,
-            COALESCE(a.name, 'Nicht zugeordnet') as apprenticeship,
+            a.name as apprenticeship,
             a.apprenticeship_id
         FROM 
             Candidate c
@@ -57,7 +66,30 @@ router.get("/", authRequired, async (req, res) => {
 
     try {
         const result = await client.query(query, values);
-        res.status(200).json({ success: true, candidates: result.rows });
+
+        // Map DB rows (snake_case) to camelCase and merge duplicate candidate rows
+        const candidatesMap = new Map();
+        result.rows.forEach(row => {
+            const r = snakeToCamelObj(row);
+            if (!candidatesMap.has(r.id)) {
+                candidatesMap.set(r.id, {
+                    id: r.id,
+                    firstName: r.firstName,
+                    lastName: r.lastName,
+                    email: r.email,
+                    status: r.status,
+                    createdAt: r.createdAt,
+                    apprenticeships: []
+                });
+            }
+
+            if (r.apprenticeshipId) {
+                candidatesMap.get(r.id).apprenticeships.push({ id: r.apprenticeshipId, name: r.apprenticeship });
+            }
+        });
+
+        const candidates = Array.from(candidatesMap.values());
+        res.status(200).json({ success: true, candidates });
     } catch (error) {
         console.error("GET /api/candidates Error:", error);
         res.status(500).json({ success: false, message: "Fehler beim Abrufen der Kandidaten." });
@@ -65,7 +97,8 @@ router.get("/", authRequired, async (req, res) => {
 });
 
 router.post("/", authRequired, checkAdmin, async (req, res) => {
-    const { firstName, lastName, email, status, apprenticeshipId } = req.body || {};
+    const { firstName, lastName, email, status, apprenticeshipId, apprenticeshipIds } = req.body || {};
+    console.log("[DEBUG] POST /api/candidates body.apprenticeshipIds:", apprenticeshipIds, " apprenticeshipId:", apprenticeshipId);
     const createdByAccountId = req.user.id;
 
     if (!firstName || !email) {
@@ -83,7 +116,16 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
         );
         const newCandidate = candidateResult.rows[0];
 
-        if (apprenticeshipId) {
+        // Persist one or many apprenticeships if provided
+        if (Array.isArray(apprenticeshipIds) && apprenticeshipIds.length > 0) {
+            for (const appId of apprenticeshipIds) {
+                await client.query(
+                    `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id)
+                     VALUES ($1, $2);`,
+                    [newCandidate.id, appId]
+                );
+            }
+        } else if (apprenticeshipId) {
             await client.query(
                 `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id)
                  VALUES ($1, $2);`,
@@ -117,7 +159,8 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
 
 router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
     const { id } = req.params;
-    const { firstName, lastName, email, status, apprenticeshipId } = req.body || {};
+    const { firstName, lastName, email, status, apprenticeshipId, apprenticeshipIds } = req.body || {};
+    console.log(`[DEBUG] PATCH /api/candidates/${id} body.apprenticeshipIds:`, apprenticeshipIds, " apprenticeshipId:", apprenticeshipId);
 
     const fields = [];
     const values = [];
@@ -139,10 +182,7 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
         fields.push(`candidate_status = $${queryIndex++}`);
         values.push(status);
     }
-    if (apprenticeshipId !== undefined) {
-        fields.push(`apprenticeship_id = $${queryIndex++}`);
-        values.push(apprenticeshipId);
-    }
+    // apprenticeship associations are handled separately below
 
     if (fields.length === 0) {
         return res.status(400).json({ success: false, message: "Keine Felder zum Aktualisieren bereitgestellt." });
@@ -165,6 +205,28 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
           ip: req.ip
         });
         
+        // If apprenticeshipIds provided, replace existing Candidate_Apprenticeship rows
+        if (Array.isArray(apprenticeshipIds)) {
+            // remove existing associations
+            await client.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
+            // insert new ones
+            for (const appId of apprenticeshipIds) {
+                await client.query(
+                    `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id) VALUES ($1, $2);`,
+                    [id, appId]
+                );
+            }
+        } else if (apprenticeshipId !== undefined) {
+            // single id provided: replace existing with single association
+            await client.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
+            if (apprenticeshipId) {
+                await client.query(
+                    `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id) VALUES ($1, $2);`,
+                    [id, apprenticeshipId]
+                );
+            }
+        }
+
         res.status(200).json({ success: true, message: "Kandidat erfolgreich aktualisiert." });
     } catch (err) {
         console.error(`PATCH /api/candidates/${id} Error:`, err);

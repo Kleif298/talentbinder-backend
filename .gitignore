@@ -16,6 +16,7 @@ tasks.json
 .env
 .env.local
 .env.*.local
+.env.tmp
 
 # system files
 .DS_Store

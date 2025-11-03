@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import client from '../config/db.js';
 import { auditLog } from '../middleware/logging.js';
+import { snakeToCamelObj } from '../utils/caseUtils.js';
 
 const router = express.Router();
 
@@ -24,10 +25,12 @@ router.post("/login", async (req, res) => {
         { expiresIn: "1h" }
       );
 
+      // In production we want SameSite=None and secure cookies for cross-site usage (e.g. deployed frontend).
+      // During local development, browsers may reject SameSite=None without Secure; use safer dev defaults.
       res.cookie("token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: "None",
+        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
         maxAge: 3600000
       });
 
@@ -84,12 +87,13 @@ router.post("/register", async (req, res) => {
       { expiresIn: "1h" }
     );
     
-    res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: "None",
-        maxAge: 3600000
-    });
+  // See note above regarding SameSite/Secure behavior in development vs production.
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
+    maxAge: 3600000
+  });
 
     await auditLog('REGISTER', 'account', account.id, account.id, { 
       email,

@@ -2,6 +2,7 @@ import express from 'express';
 import client from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
+import { snakeToCamelObj } from '../utils/caseUtils.js';
 
 const router = express.Router();
 

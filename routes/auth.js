@@ -155,7 +155,7 @@ router.post('/login', async (req, res) => {
         console.log('✅ Backend: Sending response:', responseData);
 
         // Send success response
-        res.json(responseData);
+        return res.json(responseData);
 
     } catch (error) {
         console.error('Login error:', error);

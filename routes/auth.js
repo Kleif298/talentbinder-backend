@@ -1,118 +1,277 @@
+/**
+ * Authentication Routes
+ * 
+ * Handles user login, logout, and token verification using LDAP authentication
+ * and local database synchronization.
+ */
+
 import express from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import client from '../config/db.js';
-import { auditLog } from '../middleware/logging.js';
-import { snakeToCamelObj } from '../utils/caseUtils.js';
-
 const router = express.Router();
+import jwt from 'jsonwebtoken';
+import { pool } from '../config/db.js';
+import { 
+    validateUser, 
+    getUidByEmail, 
+    getUserDetails, 
+    userIsMemberOf 
+} from '../config/ldap.js';
 
-router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const result = await client.query(
-      "SELECT account_id as id, email, password_hash, role, email FROM account WHERE email = $1;",
-      [email]
-    );
-    const account = result.rows[0];
-    const isAdmin = ["berufsbilder"].includes(account.role);
-    console.log("Login Debug:", { email, accountRole: account?.role, isAdmin });
-    
-    if (account && bcrypt.compareSync(password, account.password_hash)) {
-      const token = jwt.sign(
-        { id: account.id, email: account.email, role: account.role, isAdmin: isAdmin },
-        process.env.JWT_SECRET,
-        { expiresIn: "1h" }
-      );
+/**
+ * POST /api/auth/login
+ * 
+ * Authenticate user with LDAP and create session
+ * 
+ * Flow:
+ * 1. Get UID from email (LDAP search)
+ * 2. Validate password (LDAP bind)
+ * 3. Get user details (LDAP search)
+ * 4. Check admin status (LDAP memberOf)
+ * 5. Sync to local database
+ * 6. Generate JWT token
+ * 7. Set httpOnly cookie
+ */
+router.post('/login', async (req, res) => {
+    const { email, password } = req.body;
 
-      // In production we want SameSite=None and secure cookies for cross-site usage (e.g. deployed frontend).
-      // During local development, browsers may reject SameSite=None without Secure; use safer dev defaults.
-      res.cookie("token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
-        maxAge: 3600000
-      });
+    console.log('🔵 Backend: Login request received for:', email);
 
-      await auditLog('LOGIN', 'account', account.id, account.id, { 
-        email,
-        ip: req.ip 
-      });
-
-      res.json({
-        success: true,
-        token: token,
-        account: { id: account.id, email: account.email, role: account.role },
-      });
-    } else {
-      await auditLog('LOGIN_FAILED', 'account', null, null, { 
-        email, 
-        reason: account ? 'Invalid password' : 'User not found',
-        ip: req.ip 
-      });
-
-      res.json({
-        success: false,
-        message: "Login ist fehlgeschlagen. Überprüfe dein Passwort oder Email.",
-      });
+    // Validate input
+    if (!email || !password) {
+        console.log('❌ Backend: Missing email or password');
+        return res.status(400).json({ 
+            success: false, 
+            message: 'E-Mail und Passwort sind erforderlich.' 
+        });
     }
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
+
+    try {
+        // Step 1: Get UID from email via LDAP
+        console.log('🔵 Backend: Step 1 - Getting UID from email...');
+        const uid = await getUidByEmail(email);
+        console.log('✅ Backend: Found UID:', uid);
+        
+        // Step 2: Validate password via LDAP bind
+        console.log('🔵 Backend: Step 2 - Validating password...');
+        const isValid = await validateUser(uid, password);
+        console.log('🔵 Backend: Password valid:', isValid);
+        
+        if (!isValid) {
+            console.log('❌ Backend: Invalid password');
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Ungültige Anmeldedaten.' 
+            });
+        }
+
+        // Step 3: Get full user details from LDAP
+        console.log('🔵 Backend: Step 3 - Getting user details...');
+        const ldapUser = await getUserDetails(uid);
+        console.log('✅ Backend: LDAP user details:', ldapUser);
+        
+        // Step 4: Check if user is admin
+        console.log('🔵 Backend: Step 4 - Checking admin status...');
+        const isAdmin = await userIsMemberOf(uid, process.env.LDAP_ADMIN_GROUP || 'admins');
+        console.log('🔵 Backend: Is admin:', isAdmin);
+
+        // Step 5: Sync user to local database
+        console.log('🔵 Backend: Step 5 - Syncing to database...');
+        let dbUser = await pool.query(
+            'SELECT * FROM Account WHERE email = $1',
+            [email]
+        );
+
+        if (dbUser.rows.length === 0) {
+            console.log('🔵 Backend: User not found in DB - Creating new user...');
+            // Create new user in database
+            // Map LDAP admin status to database role: admin → 'berufsbilder', user → 'recruiter'
+            const result = await pool.query(
+                `INSERT INTO Account (email, first_name, last_name, uid, role, created_at) 
+                 VALUES ($1, $2, $3, $4, $5, NOW()) 
+                 RETURNING *`,
+                [
+                    email, 
+                    ldapUser.givenName || 'Unknown', 
+                    ldapUser.sn || 'User',
+                    uid, // Store LDAP uid
+                    isAdmin ? 'berufsbilder' : 'recruiter'
+                ]
+            );
+            dbUser = result;
+            console.log('✅ Backend: Created new user:', dbUser.rows[0]);
+        } else {
+            console.log('🔵 Backend: User exists - Updating role and uid...');
+            // Update role and uid if changed in LDAP
+            await pool.query(
+                'UPDATE Account SET role = $1, uid = $2, last_ldap_sync = NOW() WHERE email = $3',
+                [isAdmin ? 'berufsbilder' : 'recruiter', uid, email]
+            );
+            console.log('✅ Backend: Updated user role and uid');
+        }
+
+        const user = dbUser.rows[0];
+        console.log('🔵 Backend: DB user record:', user);
+
+        // Step 6: Create JWT token
+        console.log('🔵 Backend: Step 6 - Creating JWT token...');
+        const token = jwt.sign(
+            { 
+                id: user.account_id, // Changed from user.id to user.account_id
+                email: user.email, 
+                username: ldapUser.uid,
+                firstName: ldapUser.givenName,
+                lastName: ldapUser.sn,
+                role: user.role, // 'berufsbilder' or 'recruiter'
+                isAdmin: user.role === 'berufsbilder', // Convenience flag for frontend
+                uid: uid 
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+        console.log('✅ Backend: JWT token created');
+
+        // Step 7: Set secure httpOnly cookie
+        console.log('🔵 Backend: Step 7 - Setting cookie...');
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 8 * 60 * 60 * 1000 // 8 hours
+        });
+
+        const responseData = {
+            success: true,
+            message: 'Login erfolgreich.',
+            user: {
+                id: user.account_id,
+                email: user.email,
+                username: ldapUser.uid,
+                firstName: ldapUser.givenName,
+                lastName: ldapUser.sn,
+                role: user.role,
+                isAdmin: user.role === 'berufsbilder'
+            }
+        };
+
+        console.log('✅ Backend: Sending response:', responseData);
+
+        // Send success response
+        res.json(responseData);
+
+    } catch (error) {
+        console.error('Login error:', error);
+        
+        // Handle specific errors
+        if (error.message === 'User not found') {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Benutzer nicht gefunden.' 
+            });
+        }
+        
+        if (error.message.includes('LDAP connection failed')) {
+            return res.status(503).json({ 
+                success: false, 
+                message: 'LDAP-Server nicht erreichbar. Bitte später erneut versuchen.' 
+            });
+        }
+        
+        // Generic error response
+        res.status(500).json({ 
+            success: false, 
+            message: 'Serverfehler beim Login.' 
+        });
+    }
 });
 
-router.post("/register", async (req, res) => {
-  const { email, password, first_name, last_name } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ success: false, message: "Email und Passwort sind erforderlich." });
-  }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  
-  try {
-    const result = await client.query(`
-      INSERT INTO account (email, password_hash, first_name, last_name) 
-      VALUES ($1, $2, $3, $4) 
-      RETURNING account_id AS id, email, role;
-    `, [email, hashedPassword, first_name, last_name]
-    );
-    
-    const account = result.rows[0];
-    const isAdmin = ["berufsbilder"].includes(account.role);
-    const token = jwt.sign(
-      { id: account.id, email: account.email, role: account.role, isAdmin: isAdmin },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-    
-  // See note above regarding SameSite/Secure behavior in development vs production.
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? "None" : "Lax",
-    maxAge: 3600000
-  });
-
-    await auditLog('REGISTER', 'account', account.id, account.id, { 
-      email,
-      role: account.role,
-      ip: req.ip 
+/**
+ * POST /api/auth/register
+ * 
+ * Registration disabled - users managed via LDAP
+ */
+router.post('/register', async (req, res) => {
+    res.status(403).json({ 
+        success: false, 
+        message: 'Registrierung nicht verfügbar. Benutzer werden über LDAP verwaltet.' 
     });
+});
 
-    res.json({
-      success: true,
-      token: token,
-      account: { id: account.id, email: account.email, role: account.role },
-    });
-  } catch (err) {
-    console.error("Registration error:", err);
-    if (err.code === "23505") {
-      return res.status(409).json({ success: false, message: "Die E-Mail-Adresse ist bereits registriert." });
+/**
+ * POST /api/auth/logout
+ * 
+ * Clear user session and log the event
+ * Always succeeds even if token is invalid
+ */
+router.post('/logout', async (req, res) => {
+    try {
+        const token = req.cookies.token;
+        
+        if (token) {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            
+            // Log logout event for audit trail
+            await pool.query(
+                `INSERT INTO Audit_Log (table_name, record_id, action, account_id, old_data, new_data) 
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                ['Account', decoded.id, 'LOGOUT', decoded.id, null, JSON.stringify({ email: decoded.email })]
+            );
+        }
+
+        // Clear cookie
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        res.json({
+            success: true,
+            message: 'Erfolgreich abgemeldet.'
+        });
+
+    } catch (error) {
+        // Even if token is invalid, clear cookie and succeed
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict'
+        });
+
+        console.error('Logout error:', error);
+        res.json({
+            success: true,
+            message: 'Erfolgreich abgemeldet.'
+        });
     }
-    res.status(500).json({ success: false, message: "Serverfehler bei der Registrierung." });
-  }
+});
+
+/**
+ * GET /api/auth/verify
+ * 
+ * Verify if current token is valid
+ * Used by frontend to check authentication status
+ */
+router.get('/verify', async (req, res) => {
+    const token = req.cookies.token;
+    
+    if (!token) {
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Nicht authentifiziert' 
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        res.json({ 
+            success: true, 
+            user: decoded 
+        });
+    } catch (error) {
+        res.status(401).json({ 
+            success: false, 
+            message: 'Ungültiges oder abgelaufenes Token' 
+        });
+    }
 });
 
 export default router;

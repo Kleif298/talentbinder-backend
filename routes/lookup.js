@@ -1,5 +1,5 @@
 import express from 'express';
-import client from '../config/db.js';
+import { pool } from '../config/db.js';
 import { authRequired } from '../middleware/auth.js';
 import { snakeToCamelObj } from '../utils/caseUtils.js';
 
@@ -7,12 +7,12 @@ const router = express.Router();
 
 router.get("/apprenticeships", authRequired, async (req, res) => {
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT 
         apprenticeship_id as id,
         name,
         branch_id as "branchId"
-      FROM apprenticeship
+      FROM Apprenticeship
       ORDER BY name ASC;
     `);
     res.status(200).json({
@@ -27,11 +27,11 @@ router.get("/apprenticeships", authRequired, async (req, res) => {
 
 router.get("/branches", authRequired, async (req, res) => {
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT 
         branch_id as id,
         name
-      FROM branch
+      FROM Branch
       ORDER BY name ASC;
     `);
     res.status(200).json({

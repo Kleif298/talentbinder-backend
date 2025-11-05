@@ -1,5 +1,5 @@
 import express from 'express';
-import client from '../config/db.js';
+import { pool } from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
 import { snakeToCamelObj } from '../utils/caseUtils.js';
@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT 
         e.event_id as id,
         e.title,
@@ -24,8 +24,8 @@ router.get("/", async (req, res) => {
         e.created_by as "createdByAccountId",
         a.first_name as "createdByFirstName",
         a.last_name as "createdByLastName"
-      FROM event e
-      JOIN account a ON e.created_by = a.account_id
+      FROM Event e
+      JOIN Account a ON e.created_by = a.account_id
       ORDER BY e.created_at DESC;
     `);
     res.status(200).json({
@@ -49,8 +49,8 @@ router.post("/", authRequired, async (req, res) => {
   const createdByAccountId = req.user.id;
 
   try {
-    const result = await client.query(
-      `INSERT INTO event (title, description, starting_at, duration, invitations_sending_at, registrations_closing_at, created_by)
+    const result = await pool.query(
+      `INSERT INTO Event (title, description, starting_at, duration, invitations_sending_at, registrations_closing_at, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING event_id as id, title, duration, invitations_sending_at as "invitationsSendingAt", registrations_closing_at as "registrationsClosingAt";`,
       [title, description, startingAt, duration || null, invitationsSendingAt || null, registrationsClosingAt || null, createdByAccountId]
@@ -79,8 +79,8 @@ router.delete("/:eventId", authRequired, async (req, res) => {
   console.log("Delete Event request for ID:", eventId);
 
   try {
-    const checkResult = await client.query(
-      "SELECT created_by, title FROM event WHERE event_id = $1",
+    const checkResult = await pool.query(
+      "SELECT created_by, title FROM Event WHERE event_id = $1",
       [eventId]
     );
     
@@ -102,7 +102,7 @@ router.delete("/:eventId", authRequired, async (req, res) => {
       });
     }
 
-    await client.query("DELETE FROM event WHERE event_id = $1", [eventId]);
+    await pool.query("DELETE FROM Event WHERE event_id = $1", [eventId]);
     
     await auditLog('DELETE', 'event', parseInt(eventId), req.user.id, {
       title: eventTitle,
@@ -124,8 +124,8 @@ router.put("/:eventId", authRequired, async (req, res) => {
   const { title, description, startingAt, duration, invitationsSendingAt, registrationsClosingAt } = req.body || {};
 
   try {
-    const checkResult = await client.query(
-      "SELECT created_by FROM event WHERE event_id = $1",
+    const checkResult = await pool.query(
+      "SELECT created_by FROM Event WHERE event_id = $1",
       [eventId]
     );
     
@@ -144,8 +144,8 @@ router.put("/:eventId", authRequired, async (req, res) => {
       });
     }
 
-    const result = await client.query(
-      `UPDATE event
+    const result = await pool.query(
+      `UPDATE Event
        SET title = $1, description = $2, starting_at = $3, duration = $4, 
            invitations_sending_at = $5, registrations_closing_at = $6
        WHERE event_id = $7
@@ -175,7 +175,7 @@ router.get("/:eventId/recruiters", authRequired, async (req, res) => {
   const { eventId } = req.params;
 
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT 
         a.account_id as id,
         a.first_name,
@@ -211,7 +211,7 @@ router.post("/:eventId/recruiters", authRequired, async (req, res) => {
   }
 
   try {
-    const existsResult = await client.query(`
+    const existsResult = await pool.query(`
       SELECT 1 FROM Event_Recruiter 
       WHERE event_id = $1 AND recruiter_id = $2
     `, [eventId, recruiter_id]);
@@ -223,7 +223,7 @@ router.post("/:eventId/recruiters", authRequired, async (req, res) => {
       });
     }
 
-    await client.query(`
+    await pool.query(`
       INSERT INTO Event_Recruiter (event_id, recruiter_id)
       VALUES ($1, $2)
     `, [eventId, recruiter_id]);
@@ -245,7 +245,7 @@ router.delete("/:eventId/recruiters/:recruiterId", authRequired, async (req, res
   const { eventId, recruiterId } = req.params;
 
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       DELETE FROM Event_Recruiter 
       WHERE event_id = $1 AND recruiter_id = $2
     `, [eventId, recruiterId]);
@@ -274,7 +274,7 @@ router.get("/:eventId/registrations", authRequired, async (req, res) => {
   const { eventId } = req.params;
 
   try {
-    const result = await client.query(`
+    const result = await pool.query(`
       SELECT 
         er.registration_id,
         er.candidate_id,
@@ -315,7 +315,7 @@ router.post("/:eventId/registrations", authRequired, async (req, res) => {
   }
 
   try {
-    const candidateCheck = await client.query(
+    const candidateCheck = await pool.query(
       "SELECT candidate_id FROM Candidate WHERE candidate_id = $1",
       [candidate_id]
     );
@@ -327,7 +327,7 @@ router.post("/:eventId/registrations", authRequired, async (req, res) => {
       });
     }
 
-    const result = await client.query(
+    const result = await pool.query(
       `INSERT INTO Event_Registration (event_id, candidate_id)
        VALUES ($1, $2)
        RETURNING registration_id, candidate_id, registered_at`,
@@ -360,7 +360,7 @@ router.delete("/:eventId/registrations/:candidateId", authRequired, checkAdmin, 
   const { eventId, candidateId } = req.params;
 
   try {
-    const result = await client.query(
+    const result = await pool.query(
       `DELETE FROM Event_Registration 
        WHERE event_id = $1 AND candidate_id = $2
        RETURNING registration_id`,

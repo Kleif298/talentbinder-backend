@@ -1,5 +1,5 @@
 import express from 'express';
-import client from '../config/db.js';
+import { pool } from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
 import { snakeToCamelObj } from '../utils/caseUtils.js';
@@ -65,7 +65,7 @@ router.get("/", authRequired, async (req, res) => {
     query += ` ORDER BY ${orderBy};`;
 
     try {
-        const result = await client.query(query, values);
+        const result = await pool.query(query, values);
 
         // Map DB rows (snake_case) to camelCase and merge duplicate candidate rows
         const candidatesMap = new Map();
@@ -106,9 +106,9 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
     }
 
     try {
-        await client.query('BEGIN');
+        await pool.query('BEGIN');
 
-        const candidateResult = await client.query(
+        const candidateResult = await pool.query(
             `INSERT INTO Candidate (first_name, last_name, email, candidate_status, created_by)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING candidate_id as id, email, first_name;`,
@@ -119,21 +119,21 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
         // Persist one or many apprenticeships if provided
         if (Array.isArray(apprenticeshipIds) && apprenticeshipIds.length > 0) {
             for (const appId of apprenticeshipIds) {
-                await client.query(
+                await pool.query(
                     `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id)
                      VALUES ($1, $2);`,
                     [newCandidate.id, appId]
                 );
             }
         } else if (apprenticeshipId) {
-            await client.query(
+            await pool.query(
                 `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id)
                  VALUES ($1, $2);`,
                 [newCandidate.id, apprenticeshipId]
             );
         }
 
-        await client.query('COMMIT');
+        await pool.query('COMMIT');
 
         await auditLog('CREATE', 'candidate', newCandidate.id, createdByAccountId, {
           firstName,
@@ -148,7 +148,7 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
             candidate: newCandidate 
         });
     } catch (err) {
-        await client.query('ROLLBACK');
+        await pool.query('ROLLBACK');
         console.error("POST /api/candidates Error:", err);
         if (err.code === "23505") { 
             return res.status(409).json({ success: false, message: "E-Mail-Adresse ist bereits registriert." });
@@ -191,7 +191,7 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
     values.push(id);
     
     try {
-        const result = await client.query(
+        const result = await pool.query(
             `UPDATE candidate SET ${fields.join(", ")} WHERE candidate_id = $${queryIndex} RETURNING candidate_id as id;`,
             values
         );
@@ -208,19 +208,19 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
         // If apprenticeshipIds provided, replace existing Candidate_Apprenticeship rows
         if (Array.isArray(apprenticeshipIds)) {
             // remove existing associations
-            await client.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
+            await pool.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
             // insert new ones
             for (const appId of apprenticeshipIds) {
-                await client.query(
+                await pool.query(
                     `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id) VALUES ($1, $2);`,
                     [id, appId]
                 );
             }
         } else if (apprenticeshipId !== undefined) {
             // single id provided: replace existing with single association
-            await client.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
+            await pool.query(`DELETE FROM Candidate_Apprenticeship WHERE candidate_id = $1;`, [id]);
             if (apprenticeshipId) {
-                await client.query(
+                await pool.query(
                     `INSERT INTO Candidate_Apprenticeship (candidate_id, apprenticeship_id) VALUES ($1, $2);`,
                     [id, apprenticeshipId]
                 );
@@ -241,7 +241,7 @@ router.delete("/:id", authRequired, checkAdmin, async (req, res) => {
     const { id } = req.params;
 
     try {
-        const result = await client.query(
+        const result = await pool.query(
             "DELETE FROM candidate WHERE candidate_id = $1 RETURNING candidate_id as id;",
             [id]
         );

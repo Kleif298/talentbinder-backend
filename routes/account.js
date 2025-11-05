@@ -1,5 +1,5 @@
 import express from 'express';
-import client from '../config/db.js';
+import { pool } from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
 import { snakeToCamelObj } from '../utils/caseUtils.js';
@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get('/', authRequired, async (req, res) => {
 	try {
-		const result = await client.query(`
+		const result = await pool.query(`
 			SELECT 
 				account_id as id,
 				email,
@@ -35,13 +35,13 @@ router.delete('/:userId', authRequired, checkAdmin, async (req, res) => {
 	}
 
 	try {
-		const userResult = await client.query(
+		const userResult = await pool.query(
 			`SELECT email, first_name, last_name, role FROM account WHERE account_id = $1`,
 			[userId]
 		);
 		const deletedUser = userResult.rows[0];
 
-		const result = await client.query(
+		const result = await pool.query(
 			`DELETE FROM account WHERE account_id = $1 RETURNING account_id`,
 			[userId]
 		);

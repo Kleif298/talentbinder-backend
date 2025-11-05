@@ -4,8 +4,10 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "dev": "set NODE_ENV=development&& node --watch index.js",
+    "start:render": "set NODE_ENV=render&& node index.js",
+    "start:production": "set NODE_ENV=production&& node index.js",
     "start": "node index.js",
-    "dev": "node --watch index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -1,4 +1,4 @@
-import client from '../config/db.js';
+import { pool } from '../config/db.js';
 
 export function requestLogger(req, res, next) {
   const start = Date.now();
@@ -16,10 +16,10 @@ export function requestLogger(req, res, next) {
 
 export async function auditLog(action, entityType, entityId, userId, details = null) {
   try {
-    await client.query(
-      `INSERT INTO Audit_Log (action, entity_type, entity_id, user_id, details, created_at)
-       VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
-      [action, entityType, entityId, userId, details ? JSON.stringify(details) : null]
+    await pool.query(
+      `INSERT INTO Audit_Log (table_name, record_id, action, account_id, new_data)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [entityType, entityId, action, userId, details ? JSON.stringify(details) : null]
     );
   } catch (error) {
     console.error('Audit Log Error:', error);

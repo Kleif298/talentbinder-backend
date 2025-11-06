@@ -5,18 +5,12 @@ import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from 'url';
 
-import authRouter from "./routes/auth.js";
-import eventsRouter from "./routes/events.js";
-import candidatesRouter from "./routes/candidates.js";
-import accountRouter from "./routes/account.js";
-import lookupRouter from "./routes/lookup.js";
-import loggingRouter from "./routes/logging.js";
-
-import { requestLogger } from "./middleware/logging.js";
-
 // Get __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ⚡ CRITICAL: Load ALL environment variables BEFORE any other imports!
+// This ensures db.js and other modules have access to process.env
 
 // 1️⃣ Load base .env (common settings like PORT, JWT)
 dotenv.config({ path: path.resolve(__dirname, '.env') });
@@ -49,6 +43,16 @@ console.log(`🔌 Port: ${process.env.PORT}`);
 console.log(`🔗 Frontend: ${process.env.FRONTEND_URL}`);
 console.log(`💾 Database: ${process.env.DB_URL ? 'Using DB_URL' : `${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`}`);
 console.log(`🔐 LDAP: ${process.env.LDAP_URL}`);
+
+// NOW import routes (after env is loaded!)
+import authRouter from "./routes/auth.dual.js"; // Dual authentication (LDAP + Local DB)
+import eventsRouter from "./routes/events.js";
+import candidatesRouter from "./routes/candidates.js";
+import accountRouter from "./routes/account.js";
+import lookupRouter from "./routes/lookup.js";
+import loggingRouter from "./routes/logging.js";
+
+import { requestLogger } from "./middleware/logging.js";
 
 const app = express();
 

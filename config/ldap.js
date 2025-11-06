@@ -20,6 +20,16 @@ const LDAP_CONFIG = {
     searchAttributes: ['uid', 'mail', 'givenName', 'sn', 'memberOf']
 };
 
+// Debug: Log LDAP configuration (without password)
+console.log('🔐 LDAP Configuration:', {
+    url: LDAP_CONFIG.url,
+    baseDN: LDAP_CONFIG.baseDN,
+    usersDN: LDAP_CONFIG.usersDN,
+    adminDN: LDAP_CONFIG.adminDN,
+    adminPasswordSet: !!LDAP_CONFIG.adminPassword,
+    adminPasswordLength: LDAP_CONFIG.adminPassword?.length
+});
+
 /**
  * Helper: Convert LDAP entry attributes array to plain object
  * Similar to Python's entry_attributes_as_dict
@@ -46,6 +56,18 @@ function entryToObject(entry) {
  * @throws {Error} If connection or bind fails
  */
 function _createAdminClient() {
+    // Validate admin credentials before attempting connection
+    if (!LDAP_CONFIG.adminDN || !LDAP_CONFIG.adminPassword) {
+        console.error('❌ LDAP admin credentials not configured!');
+        console.error('Missing:', {
+            adminDN: !LDAP_CONFIG.adminDN ? 'LDAP_ADMIN_DN environment variable' : 'OK',
+            adminPassword: !LDAP_CONFIG.adminPassword ? 'LDAP_ADMIN_PASSWORD environment variable' : 'OK'
+        });
+        throw new Error('LDAP admin credentials not configured. Check .env.ldap file.');
+    }
+
+    console.log('🔌 Creating LDAP client connection to:', LDAP_CONFIG.url);
+    
     const client = ldap.createClient({ 
         url: LDAP_CONFIG.url,
         timeout: 5000,
@@ -55,16 +77,21 @@ function _createAdminClient() {
     return new Promise((resolve, reject) => {
         // Handle connection errors to prevent crashes
         client.on('error', (err) => {
+            console.error('❌ LDAP client error:', err.message);
             client.unbind();
             reject(new Error(`LDAP connection failed: ${err.message}`));
         });
 
+        console.log('🔐 Attempting LDAP bind with admin DN:', LDAP_CONFIG.adminDN);
+        
         // Authenticate with admin credentials
         client.bind(LDAP_CONFIG.adminDN, LDAP_CONFIG.adminPassword, (err) => {
             if (err) {
+                console.error('❌ LDAP admin bind failed:', err.message);
                 client.unbind();
                 reject(new Error(`LDAP admin bind failed: ${err.message}`));
             } else {
+                console.log('✅ LDAP admin bind successful');
                 resolve(client);
             }
         });

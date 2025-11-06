@@ -101,8 +101,12 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
     console.log("[DEBUG] POST /api/candidates body.apprenticeshipIds:", apprenticeshipIds, " apprenticeshipId:", apprenticeshipId);
     const createdByAccountId = req.user.id;
 
-    if (!firstName || !email) {
-        return res.status(400).json({ success: false, message: "Vorname und E-Mail sind erforderlich." });
+    if (!firstName || !lastName) {
+        return res.status(400).json({ success: false, message: "Vor- und Nachname sind erforderlich." });
+    }
+
+    if (!apprenticeshipIds || !Array.isArray(apprenticeshipIds) || apprenticeshipIds.length === 0) {
+        return res.status(400).json({ success: false, message: "Mindestens ein Lehrberuf ist erforderlich." });
     }
 
     try {
@@ -112,7 +116,7 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
             `INSERT INTO Candidate (first_name, last_name, email, candidate_status, created_by)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING candidate_id as id, email, first_name;`,
-            [firstName, lastName, email, status || 'Normal', createdByAccountId]
+            [firstName, lastName, email || null, status || 'Normal', createdByAccountId]
         );
         const newCandidate = candidateResult.rows[0];
 

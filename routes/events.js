@@ -42,8 +42,8 @@ router.post("/", authRequired, async (req, res) => {
   const { title, description, startingAt, duration, invitationsSendingAt, registrationsClosingAt } = req.body || {};
   console.log("POST /api/events request body:", req.body);
 
-  if (!title || !description || !startingAt) {
-    return res.status(400).json({ success: false, message: "title, description, and startingAt are required" });
+  if (!title || !startingAt) {
+    return res.status(400).json({ success: false, message: "title and startingAt are required" });
   }
 
   const createdByAccountId = req.user.id;
@@ -53,7 +53,7 @@ router.post("/", authRequired, async (req, res) => {
       `INSERT INTO Event (title, description, starting_at, duration, invitations_sending_at, registrations_closing_at, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING event_id as id, title, duration, invitations_sending_at as "invitationsSendingAt", registrations_closing_at as "registrationsClosingAt";`,
-      [title, description, startingAt, duration || null, invitationsSendingAt || null, registrationsClosingAt || null, createdByAccountId]
+      [title, description || null, startingAt, duration || null, invitationsSendingAt || null, registrationsClosingAt || null, createdByAccountId]
     );
     if (!result.rows || result.rows.length === 0) {
       return res.status(500).json({ success: false, message: "Event wurde nicht gespeichert" });
@@ -152,7 +152,7 @@ router.put("/:eventId", authRequired, async (req, res) => {
        RETURNING event_id as id, title, duration, 
                 invitations_sending_at as "invitationsSendingAt", 
                 registrations_closing_at as "registrationsClosingAt";`,
-      [title, description, startingAt, duration || null, 
+      [title, description || null, startingAt, duration || null, 
        invitationsSendingAt || null, registrationsClosingAt || null, eventId]
     );
     

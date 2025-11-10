@@ -13,11 +13,7 @@ out/
 tasks.json
 
 # environment
-.env
-.env.local
-.env.*.local
-.env.tmp
-.env*
+
 
 # system files
 .DS_Store

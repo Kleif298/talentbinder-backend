@@ -72,7 +72,7 @@ set NODE_ENV=production&& node index.js
 
 ### `.env` (Base Configuration)
 ```env
-PORT=4000
+PORT=3023
 NODE_ENV=development
 JWT_SECRET=your_secret_key
 JWT_EXPIRE=60m

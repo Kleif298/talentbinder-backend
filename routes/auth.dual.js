@@ -63,9 +63,10 @@ router.post('/login', async (req, res) => {
                     // Set HTTP-only cookie
                     res.cookie('token', localResult.token, {
                         httpOnly: true,
-                        secure: process.env.NODE_ENV === 'production',
-                        sameSite: 'lax',
-                        maxAge: 8 * 60 * 60 * 1000 // 8 hours
+                        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+                        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin
+                        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                        path: '/'
                     });
                     console.log('🍪 Backend: Cookie set for user:', email);
                     
@@ -83,9 +84,10 @@ router.post('/login', async (req, res) => {
                         // Set HTTP-only cookie
                         res.cookie('token', ldapResult.token, {
                             httpOnly: true,
-                            secure: process.env.NODE_ENV === 'production',
-                            sameSite: 'lax',
-                            maxAge: 8 * 60 * 60 * 1000 // 8 hours
+                            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+                            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin
+                            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                            path: '/'
                         });
                         console.log('🍪 Backend: Cookie set for user:', email);
                         
@@ -112,9 +114,10 @@ router.post('/login', async (req, res) => {
                 // Set HTTP-only cookie
                 res.cookie('token', ldapResult.token, {
                     httpOnly: true,
-                    secure: process.env.NODE_ENV === 'production',
-                    sameSite: 'lax',
-                    maxAge: 8 * 60 * 60 * 1000 // 8 hours
+                    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin
+                    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                    path: '/'
                 });
                 console.log('🍪 Backend: Cookie set for user:', email);
                 
@@ -139,9 +142,10 @@ router.post('/login', async (req, res) => {
         // Set HTTP-only cookie
         res.cookie('token', localResult.token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 8 * 60 * 60 * 1000 // 8 hours
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: '/'
         });
         console.log('🍪 Backend: Cookie set for user:', email);
         
@@ -264,9 +268,10 @@ router.post('/register', async (req, res) => {
         // Set HTTP-only cookie
         res.cookie('token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 8 * 60 * 60 * 1000 // 8 hours
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-origin
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: '/'
         });
         console.log('🍪 Backend: Cookie set for registration:', email);
 

@@ -60,6 +60,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:4173",
+  "http://localhost:3022",
   "https://talentbinder-frontend.onrender.com"
 ];
 

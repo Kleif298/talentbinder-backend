@@ -1,15 +1,11 @@
 /**
  * LDAP Configuration and Authentication Module
  * 
- * Provides functions to interact with LDAP directory for user authentication
- * and information retrieval. Uses admin credentials for searches and user
- * credentials for password validation.
+ * Provides streamlined functions for LDAP authentication.
+ * Main entry point: authenticateLdapUser(email, password)
  */
 
 import ldap from 'ldapjs';
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const LDAP_CONFIG = {
     url: process.env.LDAP_URL || 'ldap://idm.lab.local',
@@ -17,31 +13,26 @@ const LDAP_CONFIG = {
     usersDN: process.env.LDAP_USERS_DN || 'cn=users,cn=compat,dc=lab,dc=local',
     adminDN: process.env.LDAP_ADMIN_DN,
     adminPassword: process.env.LDAP_ADMIN_PASSWORD,
-    searchAttributes: ['uid', 'mail', 'givenName', 'sn', 'memberOf']
+    searchAttributes: ['uid', 'mail', 'givenName', 'sn', 'cn', 'memberOf', 'department', 
+                       'departmentNumber', 'ou', 'title', 'manager', 'employeeType', 
+                       'employeeNumber', 'o', 'description']
 };
 
-// Debug: Log LDAP configuration (without password)
 console.log('🔐 LDAP Configuration:', {
     url: LDAP_CONFIG.url,
     baseDN: LDAP_CONFIG.baseDN,
     usersDN: LDAP_CONFIG.usersDN,
     adminDN: LDAP_CONFIG.adminDN,
-    adminPasswordSet: !!LDAP_CONFIG.adminPassword,
-    adminPasswordLength: LDAP_CONFIG.adminPassword?.length
+    adminPasswordSet: !!LDAP_CONFIG.adminPassword
 });
 
 /**
  * Helper: Convert LDAP entry attributes array to plain object
- * Similar to Python's entry_attributes_as_dict
- * 
- * @param {Object} entry - LDAP search entry
- * @returns {Object} Plain object with attribute key-value pairs
  */
 function entryToObject(entry) {
     const obj = {};
     entry.attributes.forEach(attr => {
         if (attr.values && attr.values.length > 0) {
-            // Single value: store as string, multiple values: store as array
             obj[attr.type] = attr.values.length === 1 ? attr.values[0] : attr.values;
         }
     });
@@ -56,18 +47,11 @@ function entryToObject(entry) {
  * @throws {Error} If connection or bind fails
  */
 function _createAdminClient() {
-    // Validate admin credentials before attempting connection
     if (!LDAP_CONFIG.adminDN || !LDAP_CONFIG.adminPassword) {
         console.error('❌ LDAP admin credentials not configured!');
-        console.error('Missing:', {
-            adminDN: !LDAP_CONFIG.adminDN ? 'LDAP_ADMIN_DN environment variable' : 'OK',
-            adminPassword: !LDAP_CONFIG.adminPassword ? 'LDAP_ADMIN_PASSWORD environment variable' : 'OK'
-        });
         throw new Error('LDAP admin credentials not configured. Check .env.ldap file.');
     }
 
-    console.log('🔌 Creating LDAP client connection to:', LDAP_CONFIG.url);
-    
     const client = ldap.createClient({ 
         url: LDAP_CONFIG.url,
         timeout: 5000,
@@ -75,16 +59,12 @@ function _createAdminClient() {
     });
     
     return new Promise((resolve, reject) => {
-        // Handle connection errors to prevent crashes
         client.on('error', (err) => {
             console.error('❌ LDAP client error:', err.message);
             client.unbind();
             reject(new Error(`LDAP connection failed: ${err.message}`));
         });
 
-        console.log('🔐 Attempting LDAP bind with admin DN:', LDAP_CONFIG.adminDN);
-        
-        // Authenticate with admin credentials
         client.bind(LDAP_CONFIG.adminDN, LDAP_CONFIG.adminPassword, (err) => {
             if (err) {
                 console.error('❌ LDAP admin bind failed:', err.message);
@@ -96,44 +76,6 @@ function _createAdminClient() {
             }
         });
     });
-}
-
-/**
- * Validate user credentials by attempting LDAP bind
- * 
- * @param {string} uid - User's unique identifier
- * @param {string} password - User's password
- * @returns {Promise<boolean>} True if credentials are valid, false otherwise
- */
-async function validateUser(uid, password) {
-    const userDN = `uid=${uid},${LDAP_CONFIG.usersDN}`;
-    const client = ldap.createClient({ 
-        url: LDAP_CONFIG.url,
-        timeout: 5000,
-        connectTimeout: 10000
-    });
-
-    // Handle connection errors
-    client.on('error', (err) => {
-        console.error('LDAP error during validation:', err.message);
-    });
-
-    try {
-        return await new Promise((resolve) => {
-            // Try to bind with user credentials
-            client.bind(userDN, password, (err) => {
-                if (err) {
-                    // Bind failed = invalid password
-                    resolve(false);
-                } else {
-                    // Bind succeeded = valid password
-                    resolve(true);
-                }
-            });
-        });
-    } finally {
-        client.unbind();
-    }
 }
 
 /**
@@ -153,6 +95,8 @@ async function getUidByEmail(email) {
             attributes: ['uid']
         };
 
+        console.log('🔍 LDAP: Searching for UID with email:', email);
+
         return await new Promise((resolve, reject) => {
             client.search(LDAP_CONFIG.baseDN, searchOptions, (err, res) => {
                 if (err) {
@@ -162,9 +106,9 @@ async function getUidByEmail(email) {
                 let uid = null;
                 
                 res.on('searchEntry', (entry) => {
-                    // Convert entry to object and extract UID
                     const obj = entryToObject(entry);
                     uid = obj.uid;
+                    console.log('✅ LDAP: Found UID:', uid);
                 });
 
                 res.on('end', () => {
@@ -184,13 +128,52 @@ async function getUidByEmail(email) {
 }
 
 /**
- * Get detailed user information from LDAP
+ * Validate user credentials by attempting LDAP bind
  * 
  * @param {string} uid - User's unique identifier
- * @returns {Promise<Object>} Object containing user attributes (uid, mail, givenName, sn, memberOf)
+ * @param {string} password - User's password
+ * @returns {Promise<boolean>} True if credentials are valid, false otherwise
+ */
+async function validateUser(uid, password) {
+    const userDN = `uid=${uid},${LDAP_CONFIG.usersDN}`;
+    
+    console.log('� LDAP: Validating user credentials for UID:', uid);
+    
+    const client = ldap.createClient({ 
+        url: LDAP_CONFIG.url,
+        timeout: 5000,
+        connectTimeout: 10000
+    });
+
+    client.on('error', (err) => {
+        console.error('❌ LDAP error during validation:', err.message);
+    });
+
+    try {
+        return await new Promise((resolve) => {
+            client.bind(userDN, password, (err) => {
+                if (err) {
+                    console.error('❌ LDAP bind failed for user:', uid, '-', err.message);
+                    resolve(false);
+                } else {
+                    console.log('✅ LDAP bind successful for user:', uid);
+                    resolve(true);
+                }
+            });
+        });
+    } finally {
+        client.unbind();
+    }
+}
+
+/**
+ * Get all user data by UID
+ * 
+ * @param {string} uid - User's unique identifier
+ * @returns {Promise<Object>} Object containing all user attributes
  * @throws {Error} If user not found or search fails
  */
-async function getUserDetails(uid) {
+async function getAllDataByUid(uid) {
     const client = await _createAdminClient();
 
     try {
@@ -199,6 +182,8 @@ async function getUserDetails(uid) {
             scope: 'sub',
             attributes: LDAP_CONFIG.searchAttributes
         };
+
+        console.log('🔍 LDAP: Fetching all data for UID:', uid);
 
         return await new Promise((resolve, reject) => {
             client.search(LDAP_CONFIG.baseDN, searchOptions, (err, res) => {
@@ -209,8 +194,12 @@ async function getUserDetails(uid) {
                 let userDetails = null;
                 
                 res.on('searchEntry', (entry) => {
-                    // Convert LDAP entry to plain object
                     userDetails = entryToObject(entry);
+                    console.log('✅ LDAP: Retrieved user data:', {
+                        uid: userDetails.uid,
+                        mail: userDetails.mail,
+                        name: userDetails.cn || `${userDetails.givenName} ${userDetails.sn}`
+                    });
                 });
 
                 res.on('end', () => {
@@ -230,91 +219,90 @@ async function getUserDetails(uid) {
 }
 
 /**
- * Check if user is member of a specific group
+ * Authenticate LDAP user - Main authentication function
+ * Combines: getUidByEmail -> validateUser -> getAllDataByUid
  * 
- * @param {string} uid - User's unique identifier
- * @param {string} groupName - Group name to check (e.g., 'admins')
- * @returns {Promise<boolean>} True if user is member, false otherwise
+ * @param {string} email - User's email address
+ * @param {string} password - User's password
+ * @returns {Promise<Object|null>} User data if authentication successful, null otherwise
  */
-async function userIsMemberOf(uid, groupName) {
-    const client = await _createAdminClient();
-
+export async function authenticateLdapUser(email, password) {
     try {
-        const searchOptions = {
-            filter: `(&(objectClass=person)(uid=${uid})(memberOf=*cn=${groupName}*))`,
-            scope: 'sub',
-            attributes: ['uid']
+        console.log('🔐 LDAP: Starting authentication for:', email);
+        
+        // Step 1: Get UID from email
+        const uid = await getUidByEmail(email);
+        console.log('✅ LDAP: Step 1/3 - Got UID:', uid);
+        
+        // Step 2: Validate password
+        const isValid = await validateUser(uid, password);
+        if (!isValid) {
+            console.log('❌ LDAP: Step 2/3 - Invalid password');
+            return null;
+        }
+        console.log('✅ LDAP: Step 2/3 - Password validated');
+        
+        // Step 3: Get all user data
+        const userData = await getAllDataByUid(uid);
+        console.log('✅ LDAP: Step 3/3 - Retrieved user data');
+        
+        // Return formatted user object
+        return {
+            uid: userData.uid,
+            email: userData.mail,
+            name: userData.cn || `${userData.givenName || ''} ${userData.sn || ''}`.trim(),
+            givenName: userData.givenName,
+            surname: userData.sn,
+            department: userData.department,
+            title: userData.title,
+            memberOf: userData.memberOf
         };
-
-        return await new Promise((resolve, reject) => {
-            client.search(LDAP_CONFIG.baseDN, searchOptions, (err, res) => {
-                if (err) {
-                    return reject(err);
-                }
-
-                let found = false;
-                
-                res.on('searchEntry', () => {
-                    found = true;
-                });
-
-                res.on('end', () => {
-                    resolve(found);
-                });
-
-                res.on('error', reject);
-            });
-        });
-    } finally {
-        client.unbind();
+    } catch (err) {
+        console.error('❌ LDAP: Authentication failed:', err.message);
+        return null;
     }
 }
 
 /**
- * Check if user exists in LDAP directory
+ * Check if LDAP server is reachable
  * 
- * @param {string} uid - User's unique identifier
- * @returns {Promise<boolean>} True if user exists, false otherwise
+ * @returns {Promise<boolean>} True if server is reachable, false otherwise
  */
-async function userExists(uid) {
-    const client = await _createAdminClient();
-
-    try {
-        const searchOptions = {
-            filter: `(&(objectClass=person)(uid=${uid}))`,
-            scope: 'sub',
-            attributes: ['uid']
-        };
-
-        return await new Promise((resolve, reject) => {
-            client.search(LDAP_CONFIG.baseDN, searchOptions, (err, res) => {
-                if (err) {
-                    return reject(err);
-                }
-
-                let found = false;
-                
-                res.on('searchEntry', () => {
-                    found = true;
-                });
-
-                res.on('end', () => {
-                    resolve(found);
-                });
-
-                res.on('error', reject);
-            });
+export async function isLdapServerReachable() {
+    return new Promise((resolve) => {
+        const client = ldap.createClient({ 
+            url: LDAP_CONFIG.url,
+            timeout: 3000,
+            connectTimeout: 3000
         });
-    } finally {
-        client.unbind();
-    }
-}
 
-export {
-    validateUser,
-    getUidByEmail,
-    getUserDetails,
-    userIsMemberOf,
-    userExists,
-    LDAP_CONFIG
-};
+        let resolved = false;
+
+        client.on('connect', () => {
+            if (!resolved) {
+                resolved = true;
+                console.log('✅ LDAP server is reachable:', LDAP_CONFIG.url);
+                client.unbind();
+                resolve(true);
+            }
+        });
+
+        client.on('error', (err) => {
+            if (!resolved) {
+                resolved = true;
+                console.log('❌ LDAP server unreachable:', err.message);
+                client.unbind();
+                resolve(false);
+            }
+        });
+
+        setTimeout(() => {
+            if (!resolved) {
+                resolved = true;
+                console.log('⏱️ LDAP server check timeout');
+                client.unbind();
+                resolve(false);
+            }
+        }, 3500);
+    });
+}

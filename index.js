@@ -45,7 +45,7 @@ console.log(`💾 Database: ${process.env.DB_URL ? 'Using DB_URL' : `${process.e
 console.log(`🔐 LDAP: ${process.env.LDAP_URL}`);
 
 // NOW import routes (after env is loaded!)
-import authRouter from "./routes/auth.dual.js"; // Dual authentication (LDAP + Local DB)
+import authRouter from "./routes/auth.js"; // Dual authentication (LDAP + Local DB)
 import eventsRouter from "./routes/events.js";
 import candidatesRouter from "./routes/candidates.js";
 import accountRouter from "./routes/account.js";
@@ -58,9 +58,8 @@ const app = express();
 
 
 const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:4173",
   "http://localhost:3022",
+  "http://localhost:3024",
   "https://talentbinder-frontend.onrender.com"
 ];
 

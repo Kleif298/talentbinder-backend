@@ -1,112 +1,73 @@
 import express from 'express';
-const router = express.Router();
-import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/db.js';
-import { authenticateAndCreateToken } from '../utils/auth.js';
+import { getOrCreateUser, createAuthToken } from '../utils/auth.js';
+import { authRequired } from '../middleware/auth.js';
 
-// ldap-funktionen dynamisch importieren, wegen initialisierungsreihenfolge
-// Würde man die Funktionen normal importieren, wurden die funktionen ohne env-data geladen werden
+const router = express.Router();
 let ldapFunctions = null;
 
 async function initLdapFunctions() {
     if (!ldapFunctions) {
         try {
-            const ldapModule = await import("../config/ldap.js");
-            ldapFunctions = ldapModule;
-            console.log('✅ LDAP module loaded successfully');
+            ldapFunctions = await import("../config/ldap.js");
+            console.log('✅ LDAP module loaded');
         } catch (err) {
-            console.error('⚠️ LDAP module could not be loaded:', err.message);
-            ldapFunctions = null;
+            console.error('⚠️ LDAP module load failed:', err.message);
         }
     }
     return ldapFunctions;
 }
 
-await initLdapFunctions();
-
-// prüft, ob der ldap-server erreichbar ist
 router.get('/ldap-status', async (req, res) => {
-    try {
-        const isReachable = ldapFunctions 
-            ? await ldapFunctions.isLdapServerReachable() 
-            : false;
-        
-        return res.json({
-            success: true,
-            ldapAvailable: isReachable
-        });
-    } catch (err) {
-        console.error('❌ Error checking LDAP status:', err);
-        return res.json({
-            success: true,
-            ldapAvailable: false
-        });
-    }
+    await initLdapFunctions();
+    const isReachable = ldapFunctions ? await ldapFunctions.isLdapServerReachable() : false;
+    res.json({ success: true, ldapAvailable: isReachable });
 });
 
 router.post('/login', async (req, res) => {
     const { email, password, preferredMethod } = req.body;
 
-    console.log('🔵 Backend: Login request received:', { email, preferredMethod });
+    console.log('🔵 Login:', { email, preferredMethod });
 
-    // Validate input
     if (!email || !password) {
-        return res.status(400).json({ 
-            success: false,
-            message: 'E-Mail und Passwort sind erforderlich.' 
-        });
+        return res.status(400).json({ success: false, message: 'E-Mail und Passwort erforderlich.' });
     }
 
     if (!email.endsWith('@sunrise.net')) {
-        return res.status(400).json({ 
-            success: false,
-            message: 'Bitte verwenden Sie eine @sunrise.net E-Mail-Adresse.' 
-        });
+        return res.status(400).json({ success: false, message: 'Bitte @sunrise.net E-Mail verwenden.' });
     }
 
     try {
+        let user, token;
+
         if (preferredMethod === 'ldap') {
-            // LDAP Authentication
-            if (!ldapFunctions) {
-                console.log('❌ Backend: LDAP module not loaded');
+            await initLdapFunctions();
+            
+            if (!ldapFunctions || !(await ldapFunctions.isLdapServerReachable())) {
                 return res.status(503).json({ 
-                    success: false,
-                    message: 'LDAP-Server ist nicht verfügbar.' 
+                    success: false, 
+                    message: 'LDAP-Server nicht erreichbar. Bitte DAL-Netzwerk verbinden oder lokalen Login nutzen.' 
                 });
             }
 
-            const ldapReachable = await ldapFunctions.isLdapServerReachable();
-            if (!ldapReachable) {
-                console.log('❌ Backend: LDAP server unreachable');
-                return res.status(503).json({ 
-                    success: false,
-                    message: 'LDAP-Server ist nicht erreichbar. Bitte verbinden Sie sich mit dem DAL-Netzwerk oder nutzen Sie den lokalen Login.' 
-                });
-            }
-
-            // Authenticate via LDAP
-            console.log('🔵 Backend: Attempting LDAP authentication');
+            console.log('🔵 LDAP authentication...');
             const ldapUser = await ldapFunctions.authenticateLdapUser(email, password);
             
             if (!ldapUser) {
-                console.log('❌ Backend: Invalid LDAP credentials');
-                return res.status(401).json({
-                    success: false,
-                    message: 'Ungültige LDAP-Anmeldedaten.'
-                });
+                return res.status(401).json({ success: false, message: 'Ungültige LDAP-Anmeldedaten.' });
             }
 
-            console.log('✅ Backend: LDAP authentication successful');
-            
-            // Sync to database and create token
-            const authResponse = await authenticateAndCreateToken(ldapUser);
-            
-            return res.json(authResponse);
+            console.log('✅ LDAP success');
+            user = await getOrCreateUser(
+                ldapUser.email,
+                ldapUser.givenName || ldapUser.name.split(' ')[0],
+                ldapUser.surname || ldapUser.name.split(' ')[1] || '',
+                ldapUser.uid
+            );
 
         } else if (preferredMethod === 'local') {
-            // Local Authentication
-            console.log('🔵 Backend: Attempting local authentication');
+            console.log('🔵 Local authentication...');
             
             const result = await pool.query(
                 'SELECT account_id, first_name, last_name, email, password_hash, role FROM account WHERE email = $1',
@@ -114,71 +75,83 @@ router.post('/login', async (req, res) => {
             );
             
             if (result.rows.length === 0) {
-                console.log('❌ Backend: User not found in database');
-                return res.status(401).json({
-                    success: false,
-                    message: 'Benutzer nicht gefunden.'
+                return res.status(401).json({ success: false, message: 'Benutzer nicht gefunden.' });
+            }
+
+            const dbUser = result.rows[0];
+            
+            if (!dbUser.password_hash) {
+                return res.status(401).json({ 
+                    success: false, 
+                    message: 'Kein lokales Passwort. Bitte LDAP-Login nutzen.' 
                 });
             }
 
-            const user = result.rows[0];
-            
-            if (!user.password_hash) {
-                console.log('❌ Backend: User has no local password (LDAP-only user)');
-                return res.status(401).json({
-                    success: false,
-                    message: 'Dieser Account hat kein lokales Passwort. Bitte nutzen Sie LDAP-Login.'
-                });
+            if (!(await bcrypt.compare(password, dbUser.password_hash))) {
+                return res.status(401).json({ success: false, message: 'Ungültiges Passwort.' });
             }
 
-            const passwordMatch = await bcrypt.compare(password, user.password_hash);
-            
-            if (!passwordMatch) {
-                console.log('❌ Backend: Invalid local password');
-                return res.status(401).json({
-                    success: false,
-                    message: 'Ungültiges Passwort.'
-                });
-            }
-
-            console.log('✅ Backend: Local authentication successful');
-            
-            // Create JWT token
-            const token = jwt.sign(
-                { 
-                    id: user.account_id,
-                    email: user.email,
-                    name: `${user.first_name} ${user.last_name}`,
-                    role: user.role
-                },
-                process.env.JWT_SECRET,
-                { expiresIn: '1h' }
-            );
-            
-            return res.json({
-                success: true,
-                token,
-                user: {
-                    id: user.account_id,
-                    email: user.email,
-                    name: `${user.first_name} ${user.last_name}`,
-                    isAdmin: user.role === 'berufsbilder'
-                }
-            });
+            console.log('✅ Local success');
+            user = {
+                id: dbUser.account_id,
+                email: dbUser.email,
+                name: `${dbUser.first_name} ${dbUser.last_name}`,
+                role: dbUser.role
+            };
 
         } else {
-            return res.status(400).json({
-                success: false,
-                message: 'Ungültige Login-Methode. Nutzen Sie "ldap" oder "local".'
-            });
+            return res.status(400).json({ success: false, message: 'Ungültige Login-Methode.' });
         }
-    } catch (err) {
-        console.error('❌ Backend: Login error:', err);
-        return res.status(500).json({ 
-            success: false,
-            message: 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.' 
+
+        // Create token and send ONLY as cookie
+        token = createAuthToken(user);
+        
+        res.cookie('user', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            maxAge: 3600000
         });
+        
+        return res.json({
+            success: true,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                isAdmin: user.role === 'berufsbilder'
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Login error:', err);
+        return res.status(500).json({ success: false, message: 'Ein Fehler ist aufgetreten.' });
     }
+});
+
+router.post('/logout', (req, res) => {
+    res.clearCookie('user', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+    });
+    
+    console.log('✅ User logged out');
+    res.json({ success: true, message: 'Erfolgreich abgemeldet.' });
+});
+
+router.get('/me', authRequired, (req, res) => {
+    return res.json({
+        success: true,
+        user: {
+            id: req.user.id,
+            email: req.user.email,
+            name: req.user.name,
+            role: req.user.role,
+            isAdmin: req.user.role === 'berufsbilder' || req.user.role === 'dev' || false
+        }
+    });
 });
 
 export default router;

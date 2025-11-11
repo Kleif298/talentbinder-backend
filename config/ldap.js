@@ -44,7 +44,6 @@ function entryToObject(entry) {
  * Private function - used internally for searches
  * 
  * @returns {Promise<Client>} Authenticated LDAP client
- * @throws {Error} If connection or bind fails
  */
 function _createAdminClient() {
     if (!LDAP_CONFIG.adminDN || !LDAP_CONFIG.adminPassword) {

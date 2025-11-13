@@ -120,7 +120,7 @@ router.post('/login', async (req, res) => {
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                isAdmin: user.role === 'berufsbilder'
+                isAdmin: user.role === 'berufsbilder' || user.role === 'developer'
             }
         });
 

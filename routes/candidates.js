@@ -2,7 +2,7 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
-import { snakeToCamelObj } from '../utils/caseUtils.js';
+import { snakeToCamelObj, snakeToCamelArray } from '../utils/caseUtils.js';
 
 const router = express.Router();
 
@@ -96,9 +96,10 @@ router.get("/", authRequired, async (req, res) => {
     }
 });
 
-router.post("/", authRequired, checkAdmin, async (req, res) => {
+router.post("/", authRequired, async (req, res) => {
     const { firstName, lastName, email, status, apprenticeshipId, apprenticeshipIds } = req.body || {};
     console.log("[DEBUG] POST /api/candidates body.apprenticeshipIds:", apprenticeshipIds, " apprenticeshipId:", apprenticeshipId);
+    console.log("[DEBUG] Authenticated user:", req.user);
     const createdByAccountId = req.user.id;
 
     if (!firstName || !lastName) {
@@ -154,14 +155,16 @@ router.post("/", authRequired, checkAdmin, async (req, res) => {
     } catch (err) {
         await pool.query('ROLLBACK');
         console.error("POST /api/candidates Error:", err);
+        console.error("Error Code:", err.code);
+        console.error("Error Details:", err.message);
         if (err.code === "23505") { 
             return res.status(409).json({ success: false, message: "E-Mail-Adresse ist bereits registriert." });
         }
-        res.status(500).json({ success: false, message: "Serverfehler beim Erstellen des Kandidaten." });
+        res.status(500).json({ success: false, message: "Serverfehler beim Erstellen des Kandidaten: " + err.message });
     }
 });
 
-router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
+router.patch("/:id", authRequired, async (req, res) => {
     const { id } = req.params;
     const { firstName, lastName, email, status, apprenticeshipId, apprenticeshipIds } = req.body || {};
     console.log(`[DEBUG] PATCH /api/candidates/${id} body.apprenticeshipIds:`, apprenticeshipIds, " apprenticeshipId:", apprenticeshipId);
@@ -241,7 +244,7 @@ router.patch("/:id", authRequired, checkAdmin, async (req, res) => {
     }
 });
 
-router.delete("/:id", authRequired, checkAdmin, async (req, res) => {
+router.delete("/:id", authRequired, async (req, res) => {
     const { id } = req.params;
 
     try {

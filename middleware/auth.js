@@ -20,7 +20,7 @@ export function authRequired(req, res, next) {
 }
 
 export function checkAdmin(req, res, next) {
-    if (req.user?.role !== 'berufsbilder') {
+    if (req.user?.role !== 'berufsbilder' || req.user?.role !== 'developer') {
         return res.status(403).json({ success: false, message: "Zugriff verweigert. Nur Administratoren." });
     }
     next();

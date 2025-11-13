@@ -2,7 +2,7 @@ import express from 'express';
 import { pool } from '../config/db.js';
 import { authRequired, checkAdmin } from '../middleware/auth.js';
 import { auditLog } from '../middleware/logging.js';
-import { snakeToCamelObj } from '../utils/caseUtils.js';
+import { snakeToCamelObj, snakeToCamelArray } from '../utils/caseUtils.js';
 
 const router = express.Router();
 
@@ -10,17 +10,19 @@ router.get('/', authRequired, async (req, res) => {
 	try {
 		const result = await pool.query(`
 			SELECT 
-				account_id as id,
+				account_id,
 				email,
 				first_name,
 				last_name,
 				role,
-				created_at as "createdAt"
+				created_at
 			FROM account
 			ORDER BY last_name, first_name ASC;
 		`);
 
-		res.json(result.rows);
+		// Convert snake_case to camelCase before sending to frontend
+		const camelCaseUsers = snakeToCamelArray(result.rows);
+		res.json(camelCaseUsers);
 	} catch (error) {
 		console.error('GET /api/users error:', error);
 		res.status(500).json({ success: false, message: 'Fehler beim Abrufen der Benutzer' });

@@ -1,0 +1,131 @@
+[33mcommit 7f7532271ef40a51a2e2878b232b667c681ad2ef[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31mgitlab/main[m[33m, [m[1;31mgitlab/HEAD[m[33m)[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Tue Nov 11 17:16:15 2025 +0100
+
+    New Login auth
+
+[33mcommit 9e1310d3b90f6e37543f13e1740ef8718655bbbc[m[33m ([m[1;31mgithub/main[m[33m, [m[1;31mgithub/HEAD[m[33m)[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Tue Nov 11 09:12:16 2025 +0100
+
+    Neue Auth
+
+[33mcommit 949514409d718416af0987c6241c6f0fc02dc68c[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 10 11:14:50 2025 +0100
+
+    changed backend port to 3023
+
+[33mcommit 03e356ddadf146432eef0913832a59f60379f6dc[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 10 11:03:11 2025 +0100
+
+    env files
+
+[33mcommit 940b81c4d731a2b35bb873d68e51137546817d8e[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 10 10:43:08 2025 +0100
+
+    new frontend port 3022
+
+[33mcommit 40a18d1650b1205717229e71674663bb075d5890[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 10 01:07:22 2025 +0100
+
+    testing production in cloud
+
+[33mcommit f038a4620206f0d9f8c63a64a1802ed6a9925700[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 10 00:27:07 2025 +0100
+
+    testing production in cloud
+
+[33mcommit 0e72b0606beea95b63bb41062fc278cb4f75818a[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Thu Nov 6 14:36:06 2025 +0100
+
+    Ready for Preview
+
+[33mcommit 72d6f16891061d768fca6409e311ae446782c229[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Wed Nov 5 16:04:04 2025 +0100
+
+    Add return statement to login response
+
+[33mcommit ed9c2268cfb7e9a272d2e3debd40532ed1a18a9d[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Wed Nov 5 15:43:36 2025 +0100
+
+    Env-files and ldap login
+
+[33mcommit 61f74880fa2fb72898730e9a4474d0f3ad3c790f[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 3 17:45:49 2025 +0100
+
+    fix: duplicated candidate entries. feature: multiple apprenticeship intrests
+
+[33mcommit ccd890e979377b848c2ed97a96fda9a1613bbdc8[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Nov 3 17:45:08 2025 +0100
+
+    fix: duplicated candidate entries. feature: multiple apprenticeship intrests
+
+[33mcommit 8b3123bf74984c9992c316f87fa905113bd901ee[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Sun Nov 2 17:07:52 2025 +0100
+
+    Changed sameSite: Lax to sameSite: None
+
+[33mcommit 23fe4b729af13d0649eae562ec074849af8a3cba[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Sun Nov 2 16:31:05 2025 +0100
+
+    Corrected the cors-setting. correct url to frontend
+
+[33mcommit 9ab767be254171a258d30c7c9293ace3b9978156[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Thu Oct 30 13:23:41 2025 +0100
+
+    Backend now listens to deployed Frontend, not localhost
+
+[33mcommit 0542be642d7d8bcf1af0207ed5e2cb0b5ebcf136[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Thu Oct 30 13:20:58 2025 +0100
+
+    Backend now listens to deployed Frontend, not localhost
+
+[33mcommit 6f23568bcc8bd9e3275acf26c91eeee9dea6aabe[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Thu Oct 30 12:35:07 2025 +0100
+
+    Changes made for render Deployment
+
+[33mcommit dc7d6b525d47f0cf094304b109a60f815fd322dc[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Thu Oct 30 11:49:46 2025 +0100
+
+    Initial Commit V1.0
+
+[33mcommit de5951a8c33eb3fb99eb1946cf51155d9096934e[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Tue Oct 28 12:27:41 2025 +0100
+
+    Bugs Fixed for Recruiters
+
+[33mcommit b97ac8c9e8d9b1024aefc6c0bda47004512137bf[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Tue Oct 28 11:09:10 2025 +0100
+
+    Bugs Fixed for Recruiters
+
+[33mcommit 02cd610803a6ce06e7d9b7b8440bace9a9c3a548[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Oct 27 17:16:05 2025 +0100
+
+    Ready for Deployment
+
+[33mcommit 666dd2cb38abcf35b121737155f484e0b4a6986a[m
+Author: Leif Fieger <leif.fieger@sunrise.net>
+Date:   Mon Oct 27 11:59:13 2025 +0100
+
+    Initial Deployment V1.0
